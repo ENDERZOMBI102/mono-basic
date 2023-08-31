@@ -20,3 +20,12 @@ jobs:
       
     - name: Build everything
       run: make
+      
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3.1.2
+      with:
+        path: class/lib/net_4_5
+        if-no-files-found: error
+        retention-days: 2
+    
+      
