@@ -500,6 +500,7 @@ namespace MonoTests.Microsoft_VisualBasic
 			System.Int16 I16;
 			System.Int32 I32;
 			System.Int64 I64;
+			System.UInt64 UI64;
 			System.Object O;
 			System.String S;
 
@@ -532,6 +533,15 @@ namespace MonoTests.Microsoft_VisualBasic
 			
 			I64 = -2;
 			Assert.AreEqual("FFFFFFFFFFFFFFFE", Conversion.Hex(I64));
+
+			UI64 = System.UInt32.MaxValue;
+			Assert.AreEqual("FFFFFFFF", Conversion.Hex(UI64));
+
+			UI64 = UI64 << 32;
+			Assert.AreEqual("FFFFFFFF00000000", Conversion.Hex(UI64));
+			
+			UI64 = UI64 + System.UInt32.MaxValue - 1;
+			Assert.AreEqual("FFFFFFFFFFFFFFFE", Conversion.Hex(UI64));
 			
 			I16 = System.Byte.MaxValue;
 			S = I16.ToString();
@@ -1092,6 +1102,7 @@ namespace MonoTests.Microsoft_VisualBasic
 			short short1;
 			double dbl1;
 			float f;
+			bool b;
 
 			byte1 = 11;
 			Assert.AreEqual(" 11",Conversion.Str(byte1));
@@ -1128,6 +1139,25 @@ namespace MonoTests.Microsoft_VisualBasic
 			f = 234.234F;
 			Assert.AreEqual(" 234.234",Conversion.Str(f));
 
+			Assert.AreEqual(" 234.234", Conversion.Str("234.234"));
+
+			b = true;
+			Assert.AreEqual("True", Conversion.Str(b));
+			b = false;
+			Assert.AreEqual("False", Conversion.Str(b));
+
+			bool caughtException = false;
+
+			try
+			{
+				Conversion.Str("q234.234");
+			}
+			catch (Exception e)
+			{
+				Assert.AreEqual(typeof(InvalidCastException), e.GetType());
+				caughtException = true;
+			}
+			Assert.AreEqual(true, caughtException);
 		}
 
 		[Test]
@@ -1150,12 +1180,19 @@ namespace MonoTests.Microsoft_VisualBasic
 
 		#region Val Tests
 
+		public enum TestEnumType
+		{
+			Val1,
+			Val2,
+			Val3,
+		}
+
 		// Test the Val function
 		[Test]
 		public void Val() 
 		{
 			Assert.AreEqual(4, Conversion.Val('4'));
-			Assert.AreEqual(-3542.76, Conversion.Val("    -   3       5   .4   2  7   6E+    0 0 2    "));
+			Assert.AreEqual(-3542.7600000000002, Conversion.Val("    -   3       5   .4   2  7   6E+    0 0 2    "));
 			Assert.AreEqual(255D, Conversion.Val("&HFF"));
 			Assert.AreEqual(255D, Conversion.Val("&o377"));
 
@@ -1194,6 +1231,24 @@ namespace MonoTests.Microsoft_VisualBasic
 
 			Assert.AreEqual(0, Conversion.Val (null));
 			Assert.AreEqual(0, Conversion.Val (String.Empty));
+
+			double v;
+
+			Int32 int32_v = 28;
+			v = Conversion.Val(int32_v);
+			Assert.AreEqual(28.0, v);
+
+			TestEnumType enum_v = TestEnumType.Val3;
+			v = Conversion.Val(enum_v);
+			Assert.AreEqual(2.0, v);
+
+			Single single_v = 2.12f;
+			v = Conversion.Val(single_v);
+			Assert.AreEqual(Convert.ToSingle(v), single_v, "T#1");
+
+			double double_v = 2.12;
+			v = Conversion.Val(double_v);
+			Assert.AreEqual(v, double_v, "T#2");
 		}
 
 
@@ -1232,7 +1287,13 @@ namespace MonoTests.Microsoft_VisualBasic
 			s1 = "123.321";
 			Assert.AreEqual(123.321,Conversion.Val(s1));
 
+			s1 = "12+3.321";
+			Assert.AreEqual(12,Conversion.Val(s1));
+
 			s1 = "9 . 9 a";
+			Assert.AreEqual(9.9,Conversion.Val(s1));
+
+			s1 = "\t9\n.\r9 a";
 			Assert.AreEqual(9.9,Conversion.Val(s1));
 
 			s1 = "B9 . 9 a";
@@ -1285,6 +1346,12 @@ namespace MonoTests.Microsoft_VisualBasic
 
 			s1 = "&HFFFFFFFFFFFFFFFD";
 			Assert.AreEqual(-3,Conversion.Val(s1));
+
+			s1 = "&HFFFFFFFFFFFFFFFf";
+			Assert.AreEqual(-1,Conversion.Val(s1));
+
+			s1 = "&H8000000000000000";
+			Assert.AreEqual(-9.2233720368547758E+18,Conversion.Val(s1));
 
 			s1 = "&HFF.FF";
 			Assert.AreEqual(255,Conversion.Val(s1));

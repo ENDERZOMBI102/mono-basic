@@ -36,22 +36,15 @@ Imports Microsoft.Win32
 #If Not MOONLIGHT Then
 Imports System.Windows.Forms
 Imports System.Drawing
+Imports System.Runtime.InteropServices
 #End If
 #End If
 
 Namespace Microsoft.VisualBasic
     <StandardModule()> _
-    Public NotInheritable Class Interaction
+    Partial Public NotInheritable Class Interaction
 
 #If Not MOONLIGHT Then
-        Public Shared Sub AppActivate(ByVal ProcessId As Integer)
-            'TODO: OS Specific
-            Throw New NotImplementedException
-        End Sub
-        Public Shared Sub AppActivate(ByVal Title As String)
-            'TODO: OS Specific
-            Throw New NotImplementedException
-        End Sub
         Public Shared Sub Beep()
             'TODO: OS Specific
             ' Removed Throw exception, as it does not really harm that the beep does not work.
@@ -80,13 +73,76 @@ Namespace Microsoft.VisualBasic
             End If
         End Function
 #If Not MOONLIGHT Then
+        <DllImport ("kernel32.dll", CharSet:=CharSet.Unicode)>
+        Private Shared Function GetCommandLineW() As String
+        End Function
         Public Shared Function Command() As String
-            'TODO: OS Specific
-            Return String.Join(" ", Environment.GetCommandLineArgs)
+            Dim cmdline as String
+
+            Try
+                cmdline = GetCommandLineW
+            Catch
+                cmdline = Environment.CommandLine
+            End Try
+
+            Dim idx As Integer = 0
+
+            If cmdline.StartsWith ("""") Then
+                idx = cmdline.IndexOf ("""", 1)
+            End If
+
+            If idx <> -1 Then
+                idx = cmdline.IndexOf (" ", idx)
+            End If
+
+            If idx = -1 Then
+                Return String.Empty
+            End If
+
+            Return cmdline.Substring (idx + 1)
         End Function
         Public Shared Function CreateObject(ByVal ProgId As String, Optional ByVal ServerName As String = "") As Object
-            'TODO: COM
-            Throw New NotImplementedException
+            'Creates local or remote COM2 objects.  Should not be used to create COM+ objects.
+            'Applications that need to be STA should set STA either on their Sub Main via STAThreadAttribute
+            'or through Thread.CurrentThread.ApartmentState - the VB runtime will not change this.
+            'DO NOT SET THREAD STATE - Thread.CurrentThread.ApartmentState = ApartmentState.STA
+
+            Dim t As Type
+
+            If ProgId.Length = 0 Then
+                Throw New Exception("Cannot create ActiveX component.")
+            End If
+
+            If ServerName Is Nothing OrElse ServerName.Length = 0 Then
+                ServerName = Nothing
+            Else
+                'Does the ServerName match the MachineName?
+                If String.Equals(Environment.MachineName, ServerName, StringComparison.OrdinalIgnoreCase) Then
+                    ServerName = Nothing
+                End If
+            End If
+
+            Try
+                If ServerName Is Nothing Then
+                    t = Type.GetTypeFromProgID(ProgId)
+                Else
+                    t = Type.GetTypeFromProgID(ProgId, ServerName, True)
+                End If
+
+                Return System.Activator.CreateInstance(t)
+            Catch e As System.Runtime.InteropServices.COMException
+                If e.ErrorCode = &H800706BA Then                    '&H800706BA = The RPC Server is unavailable
+                    Throw New Exception("The remote server machine does not exist or is unavailable.")
+                Else
+                    Throw New Exception("Cannot create ActiveX component.")
+                End If
+            Catch ex As StackOverflowException
+                Throw ex
+            Catch ex As OutOfMemoryException
+                Throw ex
+            Catch e As Exception
+                Throw New Exception("Cannot create ActiveX component.")
+            End Try
         End Function
         Public Shared Sub DeleteSetting(ByVal AppName As String, Optional ByVal Section As String = Nothing, Optional ByVal Key As String = Nothing)
 
@@ -94,13 +150,15 @@ Namespace Microsoft.VisualBasic
 
             Dim rkey As RegistryKey
             rkey = Registry.CurrentUser
+            rkey = rkey.OpenSubKey("Software\VB and VBA Program Settings\", true)
             If Section Is Nothing Then
                 rkey.DeleteSubKeyTree(AppName)
             Else
+				rkey = rkey.OpenSubKey(AppName, true)
                 If Key Is Nothing Then
                     rkey.DeleteSubKeyTree(Section)
                 Else
-                    rkey = rkey.OpenSubKey(Section)
+                    rkey = rkey.OpenSubKey(Section, true)
                     rkey.DeleteValue(Key)
                 End If
             End If
@@ -172,6 +230,9 @@ Namespace Microsoft.VisualBasic
             End If
             rkey = Registry.CurrentUser
             rkey = rkey.OpenSubKey("Software\VB and VBA Program Settings\" + AppName)
+            If (rkey Is Nothing) Then
+                Return [Default]
+            End If
             rkey = rkey.OpenSubKey(Section)
             If (rkey Is Nothing) Then
                 Return [Default]
@@ -270,15 +331,6 @@ Namespace Microsoft.VisualBasic
         End Class
 #End If
 
-        Public Shared Function InputBox(ByVal Prompt As String, Optional ByVal Title As String = "", Optional ByVal DefaultResponse As String = "", Optional ByVal XPos As Integer = -1, Optional ByVal YPos As Integer = -1) As String
-#If TARGET_JVM = False Then
-            Dim f As InputForm
-            f = New InputForm(Prompt, Title, DefaultResponse, XPos, YPos)
-            Return f.Run()
-#Else
-            Throw New NotImplementedException
-#End If
-        End Function
 #End If
         Public Shared Function Partition(ByVal Number As Long, ByVal Start As Long, ByVal [Stop] As Long, ByVal Interval As Long) As String
 
@@ -367,10 +419,6 @@ Namespace Microsoft.VisualBasic
             Throw New NotImplementedException
 #End If
         End Sub
-        Public Shared Function Shell(ByVal Pathname As String, Optional ByVal Style As Microsoft.VisualBasic.AppWinStyle = Microsoft.VisualBasic.AppWinStyle.MinimizedFocus, Optional ByVal Wait As Boolean = False, Optional ByVal Timeout As Integer = -1) As Integer
-            'TODO: OS Specific
-            Throw New NotImplementedException
-        End Function
 #End If
         Public Shared Function Switch(ByVal ParamArray VarExpr() As Object) As Object
             Dim i As Integer
@@ -387,71 +435,5 @@ Namespace Microsoft.VisualBasic
             Return Nothing
         End Function
 
-#If Not MOONLIGHT Then
-        Public Shared Function MsgBox(ByVal Prompt As Object, Optional ByVal Button As MsgBoxStyle = MsgBoxStyle.OkOnly, _
-         Optional ByVal Title As Object = Nothing) As MsgBoxResult
-#If TARGET_JVM = False Then
-
-            Dim wf_buttons As MessageBoxButtons
-            Dim wf_icon As MessageBoxIcon
-            Dim wf_default As MessageBoxDefaultButton
-            Dim wf_options As MessageBoxOptions
-
-            If Title Is Nothing Then
-                Title = ""
-            End If
-            wf_icon = MessageBoxIcon.None
-            wf_options = 0
-
-            Select Case Button And 7
-                Case 0
-                    wf_buttons = MessageBoxButtons.OK
-                Case 1
-                    wf_buttons = MessageBoxButtons.OKCancel
-                Case 2
-                    wf_buttons = MessageBoxButtons.AbortRetryIgnore
-                Case 3
-                    wf_buttons = MessageBoxButtons.YesNoCancel
-                Case 4
-                    wf_buttons = MessageBoxButtons.YesNo
-                Case 5
-                    wf_buttons = MessageBoxButtons.RetryCancel
-            End Select
-
-            If (Button And 16) = 16 Then
-                wf_icon = MessageBoxIcon.Error
-            ElseIf (Button And 32) = 32 Then
-                wf_icon = MessageBoxIcon.Question
-            ElseIf (Button And 64) = 64 Then
-                wf_icon = MessageBoxIcon.Information
-            End If
-
-            If (Button And 256) = 256 Then
-                wf_default = MessageBoxDefaultButton.Button2
-            ElseIf (Button And 512) = 512 Then
-                wf_default = MessageBoxDefaultButton.Button3
-            Else
-                wf_default = MessageBoxDefaultButton.Button1
-            End If
-
-            If (Button And 4096) = 4096 Then
-                ' Ignore, we do not support SystemModal dialog boxes, or I cant find how to do this
-            End If
-
-            If (Button And 524288) = 524288 Then
-                wf_options = MessageBoxOptions.RightAlign
-            End If
-
-            If (Button And 1048576) = 1048576 Then
-                wf_options = wf_options Or MessageBoxOptions.RtlReading
-            End If
-
-            Return CType(MessageBox.Show(Prompt.ToString, Title.ToString(), wf_buttons, wf_icon, wf_default, wf_options), MsgBoxResult)
-#Else
-            Throw New NotImplementedException
-#End If
-
-        End Function
-#End If
     End Class
 End Namespace
