@@ -1,5 +1,6 @@
 Mono Basic: Visual Basic Compiler and Runtime.
 -
+[![Build CI](https://github.com/ENDERZOMBI102/mono-basic/actions/workflows/build.yml/badge.svg)](https://github.com/ENDERZOMBI102/mono-basic/actions/workflows/build.yml)
 
 ### Building
 To configure this module, first configure it, like this:
